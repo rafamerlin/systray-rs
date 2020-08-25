@@ -133,6 +133,33 @@ impl Application {
         self.window.quit()
     }
 
+    ///Will attempt to get one message from the rx with `try_recv`.
+    ///The goal here is not to lock the thread while we are checking for interactions with the tray menus.
+    ///In case there was no message at all or there was a message, the result should be `Ok(false)`
+    ///Unless it's a quit then the result will be `Ok(true)`
+    pub fn try_get_message(&mut self) -> Result<bool, Error> {
+        let msg;
+        match self.rx.try_recv() {
+            Ok(m) => msg = m,
+            Err(e) => match e {
+                std::sync::mpsc::TryRecvError::Empty => {
+                    return Ok(false);
+                }
+                std::sync::mpsc::TryRecvError::Disconnected => {
+                    self.quit();
+                    return Ok(true);
+                }
+            },
+        }
+        if self.callback.contains_key(&msg.menu_index) {
+            if let Some(mut f) = self.callback.remove(&msg.menu_index) {
+                f(self)?;
+                self.callback.insert(msg.menu_index, f);
+            }
+        }
+        Ok(false)
+    }
+
     pub fn get_message(&mut self) -> Result<bool, Error> {
         let msg;
         match self.rx.recv() {
